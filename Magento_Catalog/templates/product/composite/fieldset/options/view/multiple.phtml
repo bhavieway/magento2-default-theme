@@ -16,13 +16,11 @@ use Magento\Catalog\Block\Product\View\Options\Type\Select\Checkable;
 use Magento\Catalog\Model\Product\Option;
 use Magento\Catalog\Pricing\Price\CustomOptionPrice;
 use Magento\Framework\Escaper;
-use Magento\Framework\View\Helper\SecureHtmlRenderer;
 
 /**
  * @var Checkable $block
  * @var Escaper $escaper
  * @var ViewModelRegistry $viewModels
- * @var SecureHtmlRenderer $secureRenderer
  */
 
 $product = $block->getProduct();
@@ -31,26 +29,31 @@ $product = $block->getProduct();
 $productPriceViewModel = $viewModels->require(ProductPrice::class);
 
 $option = $block->getOption();
-if ($option): ?>
-    <?php
-    $configValue = $block->getPreconfiguredValue($option);
-    if (!is_array($configValue)) {
-            $configValue = (array)$configValue;
-    }
-    $optionType = $option->getType();
-    $optionId = $option->getId();
-    $require = $option->getIsRequire() ? ' required' : '';
-    $arraySign = $optionType === Option::OPTION_TYPE_MULTIPLE ? '[]' : '';
-    ?>
 
-<div class="options-list nested" id="options-<?= $escaper->escapeHtmlAttr($option->getId()) ?>-list">
+if ($option):
+    $configValue = $block->getPreconfiguredValue($option);
+
+    if (!is_array($configValue)) {
+        $configValue = $configValue !== null && $configValue !== ''
+            ? [$configValue]
+            : [];
+    }
+
+    $optionType = $option->getType();
+    $optionId = (int) $option->getId();
+    $arraySign = $optionType === Option::OPTION_TYPE_MULTIPLE ? '[]' : '';
+?>
+
+<div
+    class="options-list nested"
+    id="options-<?= $escaper->escapeHtmlAttr($optionId) ?>-list"
+>
     <select
-        name="options[<?= $escaper->escapeHtmlAttr($option->getId()) ?>]<?= /* @noEscape */ $arraySign ?>"
+        name="options[<?= $escaper->escapeHtmlAttr($optionId) ?>]<?= $arraySign ?>"
         id="options_<?= $escaper->escapeHtmlAttr($optionId) ?>"
         class="<?= $optionType === Option::OPTION_TYPE_MULTIPLE
-                       ? 'form-multiselect'
-                       : 'form-select' ?>
-                       product-custom-option max-w-full"
+            ? 'form-multiselect'
+            : 'form-select' ?> product-custom-option max-w-full"
         <?php if ($optionType === Option::OPTION_TYPE_MULTIPLE): ?>
             multiple="multiple"
         <?php endif; ?>
@@ -59,67 +62,72 @@ if ($option): ?>
             data-required
             oninvalid="this.setCustomValidity(this.dataset.validationMessage)"
             oninput="this.setCustomValidity('')"
-            data-validation-message="<?= $escaper
-                ->escapeHtmlAttr(__("Please select one of the options.")) ?>"
+            data-validation-message="<?= $escaper->escapeHtmlAttr(
+                __('Please select one of the options.')
+            ) ?>"
         <?php endif; ?>
         x-ref="option-<?= $escaper->escapeHtmlAttr($optionId) ?>"
         x-on:change="updateCustomOptionValue(
-            $dispatch, '<?= $escaper->escapeHtmlAttr($optionId) ?>', $event.currentTarget
+            $dispatch,
+            '<?= $escaper->escapeHtmlAttr($optionId) ?>',
+            $event.currentTarget
         )"
     >
-    <?php if ($option->getType() === Option::OPTION_TYPE_DROP_DOWN): ?>
-        <option value=""><?= $escaper->escapeHtml(__('-- Please Select --')) ?></option>
-    <?php endif; ?>
+        <?php if ($optionType === Option::OPTION_TYPE_DROP_DOWN): ?>
+            <option value="">
+                <?= $escaper->escapeHtml(__('-- Please Select --')) ?>
+            </option>
+        <?php endif; ?>
 
-    <?php foreach ($option->getValues() as $value): ?>
-        <?php
-        $checked = '';
-        if ($arraySign) {
-            $checked = is_array($configValue) && in_array($value->getOptionTypeId(), $configValue) ? 'checked' : '';
-        } else {
-            $checked = $configValue == $value->getOptionTypeId() ? 'checked' : '';
-        }
-        $dataSelector = 'options[' . $option->getId() . ']';
-        if ($arraySign) {
-            $dataSelector .= '[' . $value->getOptionTypeId() . ']';
-        }
+        <?php foreach ($option->getValues() as $value): ?>
+            <?php
+            $valueId = (int) $value->getOptionTypeId();
 
-        $optionId = $option->getId() . '_' . $value->getOptionTypeId();
+            $isSelected = in_array(
+                $valueId,
+                array_map('intval', $configValue),
+                true
+            );
 
-        $isPercentage = $value->getPriceType() === 'percent';
+            $valuePrice = $productPriceViewModel->getCustomOptionPrice(
+                $value,
+                CustomOptionPrice::PRICE_CODE,
+                $product
+            );
 
-        $valuePrice = $productPriceViewModel->getCustomOptionPrice($value, CustomOptionPrice::PRICE_CODE, $product);
-        if ($productPriceViewModel->displayPriceInclAndExclTax()) {
-            $valueBasePrice = $value->getPrice(true);
-        }
-        ?>
+            $valueBasePrice = null;
 
-            <option type="<?= $escaper->escapeHtmlAttr($optionType) ?>"
+            if ($productPriceViewModel->displayPriceInclAndExclTax()) {
+                $valueBasePrice = $value->getPrice(true);
+            }
 
-                   value="<?= $escaper->escapeHtmlAttr($value->getOptionTypeId()) ?>"
-                   <?= $escaper->escapeHtml($checked) ?>
-                   x-ref="option-<?= $escaper->escapeHtmlAttr($option->getId() . '-' . $value->getOptionTypeId()) ?>"
-                   data-price-amount="<?= $escaper->escapeHtmlAttr($valuePrice) ?>"
-                   data-price-type="<?= $escaper->escapeHtmlAttr($value->getPriceType()) ?>"
-                   data-option-id="<?= $escaper->escapeHtmlAttr($optionId) ?>"
-                <?php if (in_array($value->getOptionTypeId(), $configValue)): ?>
-                   selected="selected"
+            $formattedPrice = $block->formatPrice($value);
+
+            $optionValueId = $optionId . '_' . $valueId;
+            ?>
+
+            <option
+                value="<?= $escaper->escapeHtmlAttr($valueId) ?>"
+                data-price-amount="<?= $escaper->escapeHtmlAttr($valuePrice) ?>"
+                data-price-type="<?= $escaper->escapeHtmlAttr($value->getPriceType()) ?>"
+                data-option-id="<?= $escaper->escapeHtmlAttr($optionValueId) ?>"
+                <?php if ($isSelected): ?>
+                    selected="selected"
                 <?php endif; ?>
-                x-text="'<?= $escaper->escapeJs($escaper->escapeHtml($value->getTitle())) ?> '
-                    + (getFormattedOptionPrice('<?= $escaper->escapeJs($optionId) ?>') || '')
-                    <?php if ($productPriceViewModel->displayPriceInclAndExclTax() && $valueBasePrice > 0): ?>
-                    + ' (<?= $escaper->escapeJs(__('Excl. Tax')) ?>: '
-                    + (getFormattedOptionBasePrice('<?= $escaper->escapeJs($optionId) ?>') || '') + ')'
-                    <?php endif; ?>
-                "
             >
                 <?= $escaper->escapeHtml($value->getTitle()) ?>
-                <?= /* @noEscape */ $block->formatPrice($value) ?>
-                <?php if ($productPriceViewModel->displayPriceInclAndExclTax()): ?>
-                (<?= $escaper->escapeHtml(__('Excl. Tax')) ?>: <?= /* @noEscape */ $productPriceViewModel->format($valueBasePrice) ?>)
+                <?= /* @noEscape */ $formattedPrice ?>
+
+                <?php if (
+                    $productPriceViewModel->displayPriceInclAndExclTax()
+                    && $valueBasePrice > 0
+                ): ?>
+                    (<?= $escaper->escapeHtml(__('Excl. Tax')) ?>:
+                    <?= /* @noEscape */ $productPriceViewModel->format($valueBasePrice) ?>)
                 <?php endif; ?>
             </option>
-    <?php endforeach; ?>
+        <?php endforeach; ?>
     </select>
 </div>
+
 <?php endif; ?>
